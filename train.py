@@ -23,10 +23,10 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
 import sys
-sys.path.insert(0, "/home/asalvi/code_ws/hc10dt/HC10DT-gym") #Ensure correct path
+sys.path.insert(0, "/home/pkorrap/Projects/HC10DT-CoppeliaSim/HC10DT-gym") #Ensure correct path
 import hc10dt_gym
 
-tmp_path = "/home/asalvi/code_ws/tmp_dump/hc10dt_test/" # Path to save logs
+tmp_path = "/home/pkorrap/Projects/tmp_dump_hc10dt/hc10dt_test/" # Path to save logs
 variant = 'hc10dt_test' # Save final model by this name
 
 # Create log dir
@@ -35,7 +35,7 @@ import os
 os.makedirs(tmp_path, exist_ok=True)
 new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
 
-total_timesteps = 1e7
+total_timesteps = 1e6
 
 
 # Callback Definitions
@@ -110,7 +110,8 @@ def make_env(env_id, rank, seed=0):
 
 if __name__ == '__main__':
     env_id = "hc10dt_gym/HC10DTRL-v0"
-    num_cpu = 2  # Number of processes to use
+    num_cpu = 1
+    #num_cpu = 16  # Number of processes to use
     # Create the vectorized environment
     env = SubprocVecEnv([make_env(env_id, i) for i in range(num_cpu)], start_method='fork')
     env = VecMonitor(env, filename=tmp_path)

@@ -8,46 +8,29 @@ from scipy.spatial.transform import Rotation as R
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 from stable_baselines3.common.env_checker import check_env
 
-class HC10DTCPEnv(Env):
-    def __init__(self, port, seed):
-        # Initialize socket connection
-        client = RemoteAPIClient('localhost', port)        
+class coppTest():
+    def __init__(self):        
+        client = RemoteAPIClient()
+
         self.sim = client.require('sim')
         self.sim.setStepping(True)
         self.sim.startSimulation()
-
-        self.seed = seed
+        
         self.proximity = []
 
         # Get joint and EE handles
         joint_names = ["/base_link_respondable/joint_1_s", "/base_link_respondable/joint_2_l",
                        "/base_link_respondable/joint_3_u", "/base_link_respondable/joint_4_r",
                        "/base_link_respondable/joint_5_b", "/base_link_respondable/joint_6_t"]
+        
         self.joints = [self.sim.getObject(joint) for joint in joint_names]
         self.ee_handle = self.sim.getObject('/base_link_respondable/EE')
         self.targFrame = self.sim.getObject('/TargetFrame')        
+        
+        self.generate_random_target_pose()  
+        self.setTargFrame()      
 
-        # Define action space (joint velocities in rad/s)
-        self.action_space = Box(low=np.array([-1, -1, -1, -1, -1, -1]),
-                                high=np.array([1,  1,  1,  1,  1,  1]),
-                                dtype=np.float32)
-
-        # Define observation space (EE position and orientation)
-        self.observation_space = Box(low=np.array([-10, -10, -10, -4, -4, -4]),
-                                     high=np.array([10, 10, 10, 4, 4, 4]),
-                                     dtype=np.float32)
-
-        # self.observation_space = Box(low=np.array([-1.2, -1.2, -0.2, -3.14, -3.14, -3.14]),
-        #                              high=np.array([1.2, 1.2, 1.6, 3.14, 3.14, 3.14]),
-        #                              dtype=np.float32)                                     
-
-        # Initialize episode variables
-        self.episode_length = 5000
-        self.step_no = 0
-        self.global_timesteps = 0
-        self.target_pose = self.generate_random_target_pose()
-
-    def step(self, action):
+    def step(self, action=[0, 0, 0, 0, 0, 0]):
         """
         Executes one step in the environment.
         """
@@ -59,32 +42,16 @@ class HC10DTCPEnv(Env):
         self.sim.step()
 
         # Get observation
-        ee_position = self.sim.getObjectPose(self.ee_handle, self.sim.handle_world)
+        self.ee_position = self.sim.getObjectPose(self.ee_handle, self.sim.handle_world)
 
         # Convert quaternion to Euler angles
-        ee_rotation = R.from_quat(ee_position[3:]).as_euler('xyz', degrees=False)
+        self.ee_rotation = R.from_quat(self.ee_position[3:]).as_euler('xyz', degrees=False)
 
-        
-
-        observation = np.array([ee_position[0], ee_position[1], ee_position[2],
-                                ee_rotation[0], ee_rotation[1], ee_rotation[2]], dtype=np.float32)
+        observation = np.array([self.ee_position[0], self.ee_position[1], self.ee_position[2],
+                                self.ee_rotation[0], self.ee_rotation[1], self.ee_rotation[2]], dtype=np.float32)
 
         # Compute reward
-        reward = self.get_reward(ee_position, self.target_pose)
-
-        # Check termination condition
-        # ✅ Ensure `terminated` is a native Python `bool`
-        terminated = bool(self.episode_length == 0 or self.proximity < 0.001)
-        truncated = False  # Modify if needed
-
-        # Update counters
-        self.episode_length -= 1
-        self.step_no += 1
-        self.global_timesteps += 1
-
-        info = {}
-
-        return observation, reward, terminated, truncated, info
+        reward = self.get_reward()
 
     def reset(self, seed=None, options=None):
         """
@@ -101,7 +68,7 @@ class HC10DTCPEnv(Env):
             np.random.seed(seed)
 
         # Generate a new random target pose
-        self.target_pose = self.generate_random_target_pose()
+        self.generate_random_target_pose()        
 
         # Stop and restart simulation
         self.sim.stopSimulation()
@@ -111,7 +78,7 @@ class HC10DTCPEnv(Env):
         
         self.sim.setStepping(True)
         self.sim.startSimulation()
-        self.setTargFrame()
+        self.setTargFrame() 
         self.sim.step()
 
         # Get initial observation
@@ -141,35 +108,50 @@ class HC10DTCPEnv(Env):
         y = np.random.uniform(-0.8, 0.8)  # Sideways movement
         z = np.random.uniform(0.1, 1.2)   # Height
         
-        # roll = np.random.uniform(-np.pi, np.pi)
-        # pitch = np.random.uniform(-np.pi, np.pi)
-
         roll = np.random.uniform(-np.pi/2, np.pi/2)
         pitch = np.random.uniform(-np.pi/2, np.pi/2)
         yaw = np.random.uniform(-np.pi, np.pi)
-        	
-	    #matplotlib for visualizing error metric
-	
-        return np.array([x, y, z, roll, pitch, yaw], dtype=np.float32)
+        	    
+        self.target_pose = np.array([x, y, z, roll, pitch, yaw], dtype=np.float32)
 
-    def get_reward(self, ee_pose, target_pose):
-        """
-        Computes a normalized reward based on the Euclidean distance between 
-        the EE pose and the target pose.
-        """
-        # Extract EE position and convert quaternion to Euler angles
-        ee_position = np.array(ee_pose[:3])
-        ee_rotation = R.from_quat(ee_pose[3:]).as_euler('xyz', degrees=False)
+    def get_error(self):
+        ee_position = np.array(self.ee_position[:3])
+        ee_rotation = self.ee_rotation
 
         # Extract Target position and orientation
-        target_position = np.array(target_pose[:3])
-        target_rotation = np.array(target_pose[3:])
+        target_position = np.array(self.target_pose[:3])
+        target_rotation = np.array(self.target_pose[3:])
 
         # Compute Euclidean position error
         position_error = np.linalg.norm(ee_position - target_position)
 
         # Compute Euclidean orientation error
-        orientation_error = np.linalg.norm(ee_rotation - target_rotation) * 0
+        orientation_error = np.linalg.norm(ee_rotation - target_rotation)
+
+        print(position_error)
+        print(orientation_error)
+
+    def get_reward(self):
+        """
+        Computes a normalized reward based on the Euclidean distance between 
+        the EE pose and the target pose.
+        """
+        # Extract EE position and convert quaternion to Euler angles
+        # ee_position = np.array(ee_pose[:3])
+        # ee_rotation = R.from_quat(ee_pose[3:]).as_euler('xyz', degrees=False)
+
+        ee_position = np.array(self.ee_position[:3])
+        ee_rotation = self.ee_rotation
+
+        # Extract Target position and orientation
+        target_position = np.array(self.target_pose[:3])
+        target_rotation = np.array(self.target_pose[3:])
+
+        # Compute Euclidean position error
+        position_error = np.linalg.norm(ee_position - target_position)
+
+        # Compute Euclidean orientation error
+        orientation_error = 0 #np.linalg.norm(ee_rotation - target_rotation)
 
         # Define min/max bounds
         min_error = 0  # Best case: perfect match
@@ -196,7 +178,6 @@ class HC10DTCPEnv(Env):
             total_reward = 10000  #timesteps_reward
         else:
             total_reward = normalized_reward #-1     #timesteps_reward
-
 
         return total_reward
 

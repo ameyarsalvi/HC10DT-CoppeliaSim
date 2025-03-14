@@ -1,4 +1,4 @@
-name: Husky_CS_SB3
+name: hc10dt_CS_SB3
 channels:
   - defaults
 dependencies:
@@ -49,7 +49,7 @@ dependencies:
       - google-auth-oauthlib==1.1.0
       - greenlet==3.0.3
       - grpcio==1.59.3
-      - gymnasium==0.29.0
+      - gymnasium
       - huggingface-hub==0.20.2
       - huggingface-sb3==3.0
       - idna==3.6
@@ -124,4 +124,3 @@ dependencies:
       - urllib3==2.1.0
       - wasabi==1.1.2
       - werkzeug==3.0.1
-prefix: /home/asalvi/anaconda3/envs/Husky_CS_SB3

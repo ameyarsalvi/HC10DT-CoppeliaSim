@@ -15,8 +15,9 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EveryNTimeste
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize, VecFrameStack, VecTransposeImage, stacked_observations, VecMonitor
 
 import sys
-sys.path.insert(0, "/home/asalvi/code_workspace/Husky_CS_SB3/train/HuskyCP-gym") #######Change module path here
-import huskyCP_gym ###### and here
+#sys.path.insert(0, "/home/asalvi/code_workspace/Husky_CS_SB3/train/HuskyCP-gym") #######Change module path here
+sys.path.insert(0, "/home/pkorrap/Projects/HC10DT-CoppeliaSim/HC10DT-gym") #######Change module path here
+import hc10dt_gym ###### and here
 
 class GetEnvVar(BaseCallback):
     """
@@ -55,18 +56,20 @@ def make_env(env_id, rank, seed=0):
     #set_random_seed(seed)
     return _init
    
-tmp_path = "/home/asalvi/code_workspace/tmp/RedRes2/2WE/Eval" # Path to save logs ######change this
+#tmp_path = "/home/asalvi/code_workspace/tmp/RedRes2/2WE/Eval" # Path to save logs ######change this
+tmp_path = "/home/pkorrap/Projects/tmp_dump_hc10dt/hc10dt_test/" # Path to save logs
 # Create environment
 
-env_id = "huskyCP_gym/HuskyRL-v0" ######## change this
+env_id = "hc10dt_gym/HC10DTRL-v0" ######## change this
 num_cpu = 1  # Number of processes to use
 env = SubprocVecEnv([make_env(env_id, i) for i in range(num_cpu)], start_method='fork')
 env = VecMonitor(env, filename=tmp_path)
-env = VecTransposeImage(env, skip=False)
+#env = VecTransposeImage(env, skip=False)
 env = VecNormalize(env, training=True, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=1000.0, gamma=0.99, epsilon=1e-08, norm_obs_keys=None)
 
 #model_path = '/home/asalvi/Downloads/WP150.zip'
-model_path = '/home/asalvi/code_workspace/tmp/RedRes2/2WsUnTr/2WsUnTr.zip' ######### update model path
+#model_path = '/home/asalvi/code_workspace/tmp/RedRes2/2WsUnTr/2WsUnTr.zip' ######### update model path
+model_path = '/home/pkorrap/Projects/tmp_dump_hc10dt/hc10dt_test/hc10dt_test.zip' ######### update model path
 
 model = PPO.load(model_path, env=env, print_system_info=True)
 
