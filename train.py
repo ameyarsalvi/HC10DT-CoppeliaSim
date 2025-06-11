@@ -35,7 +35,7 @@ import os
 os.makedirs(tmp_path, exist_ok=True)
 new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
 
-total_timesteps = 1e6
+total_timesteps = 1e7
 
 
 # Callback Definitions
@@ -110,8 +110,8 @@ def make_env(env_id, rank, seed=0):
 
 if __name__ == '__main__':
     env_id = "hc10dt_gym/HC10DTRL-v0"
-    num_cpu = 1
-    #num_cpu = 16  # Number of processes to use
+    # num_cpu = 1
+    num_cpu = 16  # Number of processes to use
     # Create the vectorized environment
     env = SubprocVecEnv([make_env(env_id, i) for i in range(num_cpu)], start_method='fork')
     env = VecMonitor(env, filename=tmp_path)

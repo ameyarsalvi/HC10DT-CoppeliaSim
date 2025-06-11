@@ -10,67 +10,80 @@ from stable_baselines3.common.env_checker import check_env
 
 class HC10DTCPEnv(Env):
     def __init__(self, port, seed):
+        
+        # Initialize episode variables
+        self.seed = seed
+        self.episode_length = 5000
+        self.step_no = 0
+        self.global_timesteps = 0
+        
         # Initialize socket connection
         client = RemoteAPIClient('localhost', port)        
+
+        # Set Coppeliasim options
         self.sim = client.require('sim')
         self.sim.setStepping(True)
         self.sim.startSimulation()
-
-        self.seed = seed
-        self.proximity = []
-
+        
         # Get joint and EE handles
         joint_names = ["/base_link_respondable/joint_1_s", "/base_link_respondable/joint_2_l",
                        "/base_link_respondable/joint_3_u", "/base_link_respondable/joint_4_r",
                        "/base_link_respondable/joint_5_b", "/base_link_respondable/joint_6_t"]
+        
         self.joints = [self.sim.getObject(joint) for joint in joint_names]
+        
         self.ee_handle = self.sim.getObject('/base_link_respondable/EE')
         self.targFrame = self.sim.getObject('/TargetFrame')        
 
+        #TODO: UNCOMMENT BELOW
         # Define action space (joint velocities in rad/s)
         self.action_space = Box(low=np.array([-1, -1, -1, -1, -1, -1]),
                                 high=np.array([1,  1,  1,  1,  1,  1]),
                                 dtype=np.float32)
+        #TODO: UNCOMMENT ABOVE
+
+        #TODO: REMOVE BELOW
+        # self.action_space = Box(low=np.array([-1, -1]),
+        #                         high=np.array([1,  1]),
+        #                         dtype=np.float32)
+        #TODO: REMOVE ABOVE
 
         # Define observation space (EE position and orientation)
-        self.observation_space = Box(low=np.array([-10, -10, -10, -4, -4, -4]),
-                                     high=np.array([10, 10, 10, 4, 4, 4]),
+        self.observation_space = Box(low =np.array([-10, -10, -10, -4, -4, -4, -10, -10, -10, -4, -4, -4]),
+                                     high=np.array([ 10,  10,  10,  4,  4,  4,  10,  10,  10,  4,  4,  4]),
                                      dtype=np.float32)
 
-        # self.observation_space = Box(low=np.array([-1.2, -1.2, -0.2, -3.14, -3.14, -3.14]),
-        #                              high=np.array([1.2, 1.2, 1.6, 3.14, 3.14, 3.14]),
+        # self.observation_space = Box(low=np.array([-1.4, -1.4, -0.2, -3.14, -3.14, -3.14]),
+        #                              high=np.array([1.4, 1.4, 1.6, 3.14, 3.14, 3.14]),
         #                              dtype=np.float32)                                     
-
-        # Initialize episode variables
-        self.episode_length = 5000
-        self.step_no = 0
-        self.global_timesteps = 0
-        self.target_pose = self.generate_random_target_pose()
+        
+        self.proximity = 0
+        self.generate_random_target_pose()
+        self.set_target_frame()
 
     def step(self, action):
         """
         Executes one step in the environment.
         """
+        
         # Apply joint velocities
+        #TODO: UNCOMMENT BELOW
         for joint, vel in zip(self.joints, action):
             self.sim.setJointTargetVelocity(joint, float(vel))
+        #TODO: UNCOMMENT ABOVE
+
+        #TODO: REMOVE BELOW
+        # vels = np.append(np.append([0], action), [0,0,0])
+        # for joint, vel in zip(self.joints, vels):
+        #     self.sim.setJointTargetVelocity(joint, float(vel))
+        #TODO: REMOVE ABOVE
 
         # Step simulation
         self.sim.step()
-
-        # Get observation
-        ee_position = self.sim.getObjectPose(self.ee_handle, self.sim.handle_world)
-
-        # Convert quaternion to Euler angles
-        ee_rotation = R.from_quat(ee_position[3:]).as_euler('xyz', degrees=False)
-
-        
-
-        observation = np.array([ee_position[0], ee_position[1], ee_position[2],
-                                ee_rotation[0], ee_rotation[1], ee_rotation[2]], dtype=np.float32)
+        observation = self.get_observation()        
 
         # Compute reward
-        reward = self.get_reward(ee_position, self.target_pose)
+        reward = self.get_reward(observation)
 
         # Check termination condition
         # ✅ Ensure `terminated` is a native Python `bool`
@@ -94,14 +107,11 @@ class HC10DTCPEnv(Env):
 
         # Reset episode variables
         self.episode_length = 5000
-        self.step_no = 0
+        self.step_no = 0        
 
         # Set the random seed for reproducibility
         if seed is not None:
             np.random.seed(seed)
-
-        # Generate a new random target pose
-        self.target_pose = self.generate_random_target_pose()
 
         # Stop and restart simulation
         self.sim.stopSimulation()
@@ -109,24 +119,23 @@ class HC10DTCPEnv(Env):
         while self.sim.getSimulationState() != self.sim.simulation_stopped:
             time.sleep(0.1)
         
-        self.sim.setStepping(True)
+        # self.sim.setStepping(True)
         self.sim.startSimulation()
-        self.setTargFrame()
+
+        # Generate a new random target pose
+        self.generate_random_target_pose()
+        self.set_target_frame()
+        
         self.sim.step()
 
-        # Get initial observation
-        ee_position = self.sim.getObjectPose(self.ee_handle, self.sim.handle_world)
-        ee_rotation = R.from_quat(ee_position[3:]).as_euler('xyz', degrees=False)
-
-        observation = np.array([ee_position[0], ee_position[1], ee_position[2],
-                                ee_rotation[0], ee_rotation[1], ee_rotation[2]], dtype=np.float32)
+        observation = self.get_observation()
 
         return observation, {}
 
     def render(self):
         pass
 
-    def setTargFrame(self):
+    def set_target_frame(self):
         t = self.target_pose.tolist()
 
         # Move target frame in visualization        
@@ -137,9 +146,17 @@ class HC10DTCPEnv(Env):
         """
         Generates a random target pose (x, y, z, roll, pitch, yaw) within reasonable bounds.
         """
+        #TODO: UNCOMMENT BELOW
         x = np.random.uniform(0.2, 1.0)   # Forward reach
         y = np.random.uniform(-0.8, 0.8)  # Sideways movement
         z = np.random.uniform(0.1, 1.2)   # Height
+        #TODO: UNCOMMENT ABOVE
+
+        #TODO: REMOVE BELOW
+        # x = np.random.uniform(0.2, 1.0)   # Forward reach
+        # y = 0.162  # Sideways movement
+        # z = np.random.uniform(0.1, 1.2)   # Height
+        #TODO: REMOVE ABOVE
         
         # roll = np.random.uniform(-np.pi, np.pi)
         # pitch = np.random.uniform(-np.pi, np.pi)
@@ -147,34 +164,55 @@ class HC10DTCPEnv(Env):
         roll = np.random.uniform(-np.pi/2, np.pi/2)
         pitch = np.random.uniform(-np.pi/2, np.pi/2)
         yaw = np.random.uniform(-np.pi, np.pi)
-        	
-	    #matplotlib for visualizing error metric
-	
-        return np.array([x, y, z, roll, pitch, yaw], dtype=np.float32)
 
-    def get_reward(self, ee_pose, target_pose):
+        self.target_pose = np.array([x, y, z, roll, pitch, yaw], dtype=np.float32)               
+
+    def get_observation(self):
+        """
+        Returns a 12x1 vector with End Effector's actual and desired pose.
+        """
+
+        # Get observation of end effector
+        ee_pose_act = self.sim.getObjectPose(self.ee_handle, self.sim.handle_world)
+        ee_pose_des = self.sim.getObjectPose(self.targFrame, self.sim.handle_world)
+
+        # Convert quaternion to Euler angles
+        ee_rot_act = R.from_quat(ee_pose_act[3:]).as_euler('xyz', degrees=False)
+        ee_rot_des = R.from_quat(ee_pose_des[3:]).as_euler('xyz', degrees=False)
+
+        # ee_rot_act = self.sim.getObjectOrientation(self.ee_handle, self.sim.handle_world)
+        # ee_rot_des = self.sim.getObjectOrientation(self.targFrame, self.sim.handle_world)
+
+        observation = np.array([ee_pose_act[0], ee_pose_act[1], ee_pose_act[2], ee_rot_act[0], ee_rot_act[1], ee_rot_act[2],
+                                ee_pose_des[0], ee_pose_des[1], ee_pose_des[2], ee_rot_des[0], ee_rot_des[1], ee_rot_des[2]], dtype=np.float32)
+
+        return observation
+    
+    # def get_reward(self, ee_pose, target_pose):
+    def get_reward(self, observation):        
         """
         Computes a normalized reward based on the Euclidean distance between 
         the EE pose and the target pose.
         """
         # Extract EE position and convert quaternion to Euler angles
-        ee_position = np.array(ee_pose[:3])
-        ee_rotation = R.from_quat(ee_pose[3:]).as_euler('xyz', degrees=False)
+        ee_pos_act = np.array(observation[0:3])
+        ee_rot_act = np.array(observation[3:6])
 
         # Extract Target position and orientation
-        target_position = np.array(target_pose[:3])
-        target_rotation = np.array(target_pose[3:])
+        ee_pos_des = np.array(observation[6:9])
+        ee_rot_des = np.array(observation[9:12])
 
         # Compute Euclidean position error
-        position_error = np.linalg.norm(ee_position - target_position)
+        position_error = np.linalg.norm(ee_pos_des - ee_pos_act)
 
         # Compute Euclidean orientation error
-        orientation_error = np.linalg.norm(ee_rotation - target_rotation) * 0
+        orientation_error = np.linalg.norm(ee_rot_des - ee_rot_act)
 
         # Define min/max bounds
-        min_error = 0  # Best case: perfect match
-        #max_error = 2.1 + 10.88  # Worst case: max position + max orientation error
-        max_error = 2.4 + 18.84  # Worst case: max position + max orientation error
+        min_error = 0  # Best case: perfect match        
+        max_error = 3.5 + 12.57  # Worst case: max position + max orientation error
+        
+        # max_error = 3.5  # Worst case: max position + max orientation error
 
         # Compute total error
         total_error = position_error + orientation_error
@@ -184,9 +222,7 @@ class HC10DTCPEnv(Env):
         timesteps_reward = -1 #(1 - (self.step_no)/(5000))**2
 
         # Reward: Higher is better, so use (1 - normalized_error)
-        normalized_reward = (1 - normalized_error)**2  # 1 when perfect, 0 when worst
-        # normalized_reward = -1*normalized_error**4 # 2
-        #normalized_reward = -1*normalized_error**4 # 2
+        normalized_reward = (1 - normalized_error)**2  # 1 when perfect, 0 when worst        
 
         #total_reward = normalized_reward + timesteps_reward
 
